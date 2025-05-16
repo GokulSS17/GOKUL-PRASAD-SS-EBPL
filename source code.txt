@@ -1,0 +1,118 @@
+# Install necessary libraries
+!pip install plotly scikit-learn
+
+# Import libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+
+# Generate synthetic data
+np.random.seed(42)
+n_samples = 3000
+years = np.random.choice(range(2018, 2024), size=n_samples)
+months = np.random.choice(range(1, 13), size=n_samples)
+hours = np.random.choice(24, size=n_samples)
+states = np.random.choice(['Maharashtra', 'Tamil Nadu', 'Karnataka', 'Uttar Pradesh', 'Gujarat'], size=n_samples)
+severities = np.random.choice(['Fatal', 'Serious', 'Minor'], size=n_samples, p=[0.3, 0.4, 0.3])
+vehicles = np.random.choice(['Two-wheeler', 'Car', 'Truck', 'Bus', 'Other'], size=n_samples)
+roads = np.random.choice(['Highway', 'City Road', 'Rural Road'], size=n_samples)
+causes = np.random.choice(['Speeding', 'Drunk Driving', 'Distraction', 'Road Condition', 'Other'], size=n_samples)
+
+df = pd.DataFrame({
+    'year': years,
+    'month': months,
+    'hour': hours,
+    'state': states,
+    'severity': severities,
+    'vehicle_type': vehicles,
+    'road_type': roads,
+    'cause': causes
+})
+
+df['is_night'] = ((df['hour'] >= 18) | (df['hour'] <= 5)).astype(int)
+df['weekend'] = np.random.choice([0, 1], size=n_samples, p=[0.7, 0.3])
+df['traffic_density'] = np.random.uniform(1, 10, size=n_samples).round(1)
+
+# Overview Plots
+print("Total Accidents:", len(df))
+print("Fatal Accidents:", (df['severity'] == 'Fatal').sum())
+print("Night Accidents:", df['is_night'].sum())
+
+# Yearly Trend
+fig = px.line(df.groupby('year').size().reset_index(name='count'), x='year', y='count', title="Year-wise Accident Count")
+fig.show()
+
+# Severity Pie Chart
+severity_counts = df['severity'].value_counts().reset_index()
+severity_counts.columns = ['severity_type', 'count']
+
+fig = px.pie(
+    severity_counts,
+    names='severity_type',
+    values='count',
+    title='Severity Distribution',
+    color='severity_type',
+    color_discrete_map={'Fatal': 'red', 'Serious': 'orange', 'Minor': 'green'}
+)
+fig.show()
+
+# Hourly Accident Distribution
+fig = px.bar(df.groupby('hour').size().reset_index(name='count'), x='hour', y='count', title="Hourly Accident Distribution")
+fig.show()
+
+# Prediction Model
+features = pd.get_dummies(df[['hour', 'is_night', 'weekend', 'road_type', 'vehicle_type']])
+target = (df['severity'] == 'Fatal').astype(int)
+X_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.3, random_state=42)
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+
+model = RandomForestClassifier(n_estimators=50, random_state=42)
+model.fit(X_train_scaled, y_train)
+
+# Sample input for prediction
+test_input = pd.DataFrame({
+    'hour': [21],
+    'is_night': [1],
+    'weekend': [1],
+    'road_type': ['Highway'],
+    'vehicle_type': ['Two-wheeler']
+})
+
+test_encoded = pd.get_dummies(test_input)
+for col in features.columns:
+    if col not in test_encoded.columns:
+        test_encoded[col] = 0
+test_encoded = test_encoded[features.columns]
+
+# Predict
+scaled_input = scaler.transform(test_encoded)
+prediction = model.predict_proba(scaled_input)[0][1]
+
+# Gauge Chart for Prediction
+fig = go.Figure(go.Indicator(
+    mode="gauge+number",
+    value=prediction * 100,
+    title={'text': "Fatal Accident Risk (%)"},
+    gauge={'axis': {'range': [0, 100]},
+           'bar': {'color': "darkred"},
+           'steps': [
+               {'range': [0, 30], 'color': "green"},
+               {'range': [30, 70], 'color': "yellow"},
+               {'range': [70, 100], 'color': "red"}]
+           }))
+fig.show()
+
+# Risk Message
+if prediction > 0.7:
+    print("⚠️ High risk of fatal accident!")
+elif prediction > 0.3:
+    print("⚠️ Moderate risk of fatal accident")
+else:
+    print("✅ Low risk of fatal accident")
